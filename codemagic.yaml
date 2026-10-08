@@ -1,50 +1,46 @@
 workflows:
-  react-native-ios:
+  sample-workflow:
     name: Garage Road Ready Hub
     max_build_duration: 120
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: GaragRoudeApiKeyNew
     environment:
-      xcode: '26.0'
-      groups:
-        - app_store_credentials
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.dkasdfwek.sljghkfsjnduqnz
       vars:
-        XCODE_WORKSPACE: 'GarageRoadReadyHub.xcworkspace' # <----
-        XCODE_SCHEME: 'GarageRoadReadyHub' # <----
-        BUNDLE_ID: 'com.dkasdfwek.sljghkfsjnduqnz' # <----
-        APP_STORE_APP_ID: 6816999910 # <----
-        APP_STORE_CONNECT_KEY_ID: 'SUMVM8MSDY' # <----
-        APP_STORE_CONNECT_ISSUER_ID: 'ae23a8d4-6d64-4219-9f4a-9e6ad1d4ddae' # <----
-        node: latest
-        xcode: latest
-        cocoapods: default
-    triggering:
-      events:
-        - push
-        - tag
-        - pull_request
-      branch_patterns:
-        - pattern: develop
-          include: true
-          source: true
+        APP_STORE_APPLE_ID: 6816999910
+        BUNDLE_ID: 'com.dkasdfwek.sljghkfsjnduqnz'
+        XCODE_WORKSPACE: 'GarageRoadReadyHub.xcworkspace'
+        XCODE_SCHEME: 'GarageRoadReadyHub'
     scripts:
-      - name: Install npm dependencies
-        script: npm install --force
+      - name: Install node modules
+        script: |
+          npm install
       - name: Install CocoaPods dependencies
-        script: cd ios && pod install
-      - name: Set up keychain for code signing
-        script: keychain initialize
-      - name: Fetch signing files
-        script: app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-      - name: Use system default keychain
-        script: keychain add-certificates
+        script: |
+          cd ios && pod install
+      - name: Set up provisioning profile settings on  Xcode project
+        script: |
+          cd ios
+          xcode-project use-profiles
       - name: Increment build number
         script: |
+          #!/bin/sh
           cd $CM_BUILD_DIR/ios
-          agvtool new-version -all $(($(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID") + 1))
-      - name: Set up code signing settings in Xcode project
-        script: xcode-project use-profiles --warn-only
-      - name: Build IPA for distribution
-        script: xcode-project build-ipa --workspace "$CM_BUILD_DIR/ios/$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME" --archive-flags="-destination 'generic/platform=iOS'"
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID")
+          agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
+      - name: Set Info.plist values
+        script: |
+          PLIST=$CM_BUILD_DIR/ios/AwesomeProject/Info.plist
+          PLIST_BUDDY=/usr/libexec/PlistBuddy
+          $PLIST_BUDDY -c "Add :ITSAppUsesNonExemptEncryption bool false" $PLIST
+      - name: Build ipa for distribution
+        script: |
+          xcode-project build-ipa \
+            --workspace "$CM_BUILD_DIR/ios/$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
@@ -52,7 +48,6 @@ workflows:
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
     publishing:
       app_store_connect:
-        api_key: '$APP_STORE_CONNECT_PRIVATE_KEY'
-        key_id: '$APP_STORE_CONNECT_KEY_ID'
-        issuer_id: '$APP_STORE_CONNECT_ISSUER_ID'
-        submit_to_testflight: true
+        auth: integration
+        submit_to_app_store: true
+        copyright: James Warner
